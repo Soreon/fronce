@@ -71,3 +71,6 @@ $RECYCLE.BIN/
 *.vsix
 .vscode/
 .claude/
+
+# Captures de vérification (artefacts locaux)
+tools/shots/

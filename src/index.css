@@ -81,6 +81,36 @@
 .mode-fleuves .dep { fill: #eaf1fb; stroke: #dbe6f5; }
 
 /* ---------- Fleuves ---------- */
+/* ---------- Jeu ---------- */
+.quiz .dep { pointer-events: none; }
+.quiz.clickable .dep { pointer-events: auto; cursor: pointer; }
+.quiz.clickable .dep:hover { fill: #6f97cf; }
+.quiz .dep.reg-hover    { fill: #6f97cf; }   /* survol : toute la région sous le curseur */
+.quiz .dep.quiz-target  { fill: #f59e0b; }   /* ambre : zone à identifier */
+.quiz .dep.quiz-correct { fill: #22c55e; }   /* vert : bonne réponse */
+.quiz .dep.quiz-wrong   { fill: #ef4444; }   /* rouge : mauvais clic */
+
+/* ---------- Apprendre (départements dans l'ordre) ---------- */
+.learn .dep { pointer-events: auto; cursor: pointer; }
+.learn .dep.learn-seen    { fill: #9ec9a0; }   /* déjà vu (vert doux) */
+.learn .dep.learn-current { fill: #f59e0b; }   /* département courant (ambre) */
+.learn .dep.learn-current { stroke: #b45309; stroke-width: 1; }
+
+/* numéros des départements */
+.dept-num {
+  font-size: 8px;
+  font-weight: 700;
+  fill: #1e3a5f;
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;            /* halo blanc pour la lisibilité */
+  stroke: #ffffff;
+  stroke-width: 1.6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.dept-num.cur { font-size: 13px; font-weight: 800; fill: #7c2d12; stroke-width: 2px; }
+
 .rivers path { vector-effect: non-scaling-stroke; }
 /* visiblePainted : capte le survol sur les traits ET les plans d'eau remplis */
 .mode-fleuves .rivers path { pointer-events: visiblePainted; }

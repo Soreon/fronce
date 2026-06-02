@@ -166,35 +166,46 @@ const dotCode = assign.map(gi=>codes[gi]);
 // position svg de chaque dot -> code
 const dotByCode = {}; dots.forEach((q,di)=>{ dotByCode[dotCode[di]]=q; });
 
-// ---------- 5. Étiquetage des tracés (affectation par POINT, unicité) ----------
-const pathCode = new Array(paths.length).fill(null);
-const taken = new Array(paths.length).fill(false);
-// Pour chaque point-préfecture, candidats = tracés le contenant (PiP), triés par aire croissante (le plus spécifique),
-// puis, en repli, tracés les plus proches du point. On prend le premier non encore pris -> unicité garantie.
-for(let di=0; di<dots.length; di++){
-  const [px,py]=dots[di];
-  const containing=[]; for(let pi=0; pi<paths.length; pi++) if(pointInRings(px,py,paths[pi].rings)) containing.push(pi);
-  containing.sort((a,b)=>paths[a].area-paths[b].area);
-  const byDist=[...paths.keys()].sort((a,b)=>{const da=(paths[a].cx-px)**2+(paths[a].cy-py)**2,db=(paths[b].cx-px)**2+(paths[b].cy-py)**2;return da-db;});
-  const order=[...containing, ...byDist.filter(pi=>!containing.includes(pi))];
-  const pick=order.find(pi=>!taken[pi]);
-  if(pick!=null){ taken[pick]=true; pathCode[pick]=dotCode[di]; }
+// ---------- 5. Étiquetage des tracés (affectation globale optimale : appartenance + aire + distance) ----------
+// Coût(tracé, point) : si le point est DANS le tracé -> coût négatif = -aire (préfère le continent
+//   aux petites îles qui contiennent aussi parfois le point) ; sinon -> PÉNALITÉ + distance²
+//   (repli vers le centroïde le plus proche, pour les préfectures tombant hors de leur tracé,
+//   ex. Nevers sur la Loire). Le Hongrois global garantit l'unicité et résout les conflits
+//   (deux points dans le même tracé -> au plus proche ; l'autre est replié).
+const NP = paths.length;            // 145 tracés
+const PEN = 1e7;
+const cost5 = [];
+for (let pi = 0; pi < NP; pi++) {
+  const row = new Array(NP);
+  for (let di = 0; di < N; di++) {
+    const dx = paths[pi].cx - dots[di][0], dy = paths[pi].cy - dots[di][1], d2 = dx * dx + dy * dy;
+    row[di] = pointInRings(dots[di][0], dots[di][1], paths[pi].rings) ? (-paths[pi].area + 1e-3 * d2) : (PEN + d2);
+  }
+  for (let dum = N; dum < NP; dum++) row[dum] = 0;   // colonnes fictives -> tracés en trop (fragments/îles)
+  cost5.push(row);
 }
-// Tracés restants (îles/fragments) : code du point-préfecture le plus proche du centroïde
-for(let pi=0; pi<paths.length; pi++){
-  if(pathCode[pi]) continue;
-  let best=null,bd=1e18;
-  for(let di=0; di<dots.length; di++){ const dx=paths[pi].cx-dots[di][0], dy=paths[pi].cy-dots[di][1]; const d=dx*dx+dy*dy; if(d<bd){bd=d;best=di;} }
-  pathCode[pi]=dotCode[best];
+const pathToCol = hungarian(cost5);  // pathToCol[pi] = colonne ; < N => index du point-préfecture
+const pathCode = new Array(NP).fill(null);
+for (let pi = 0; pi < NP; pi++) { const col = pathToCol[pi]; if (col < N) pathCode[pi] = dotCode[col]; }
+// Tracés restants (fragments/îles) : code du point-préfecture le plus proche du centroïde
+for (let pi = 0; pi < NP; pi++) {
+  if (pathCode[pi]) continue;
+  let best = 0, bd = 1e18;
+  for (let di = 0; di < N; di++) { const dx = paths[pi].cx - dots[di][0], dy = paths[pi].cy - dots[di][1]; const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = di; } }
+  pathCode[pi] = dotCode[best];
 }
 
 // ---------- 5bis. Correction déterministe Île-de-France ----------
 // Les micro-départements (petite couronne) sont trop petits pour un rattachement fiable par point.
 // On identifie chaque tracé IDF par sa géométrie (cf. inventaire) et on force le code.
 // Indices stables (ordre de parsing du groupe France).
-// #51/#52 : minuscules fragments réellement dans l'Oise (60, Hauts-de-France), pas en IDF.
-const IDF_OVERRIDE = { 57:'78', 66:'77', 67:'95', 68:'93', 69:'92', 70:'75', 71:'94', 72:'91', 51:'60', 52:'60' };
-for(const [pi,code] of Object.entries(IDF_OVERRIDE)) pathCode[+pi]=code;
+// Overrides déterministes par index de tracé (indices stables = ordre de parsing) :
+//  - petite couronne IDF : micro-départements trop petits pour un rattachement fiable.
+//  - #51/#52 : minuscules fragments réellement dans l'Oise (60, Hauts-de-France).
+//  - #86 : continent de la Charente-Maritime (17) ; sa préfecture La Rochelle, côtière,
+//    tombe hors de tout polygone, donc le tracé restait étiqueté 16 (doublon avec #94=Charente).
+const OVERRIDE = { 57:'78', 66:'77', 67:'95', 68:'93', 69:'92', 70:'75', 71:'94', 72:'91', 51:'60', 52:'60', 86:'17' };
+for(const [pi,code] of Object.entries(OVERRIDE)) pathCode[+pi]=code;
 
 // ---------- 6. Contrôles ----------
 const covered = new Set(pathCode); const missing = codes.filter(c=>!covered.has(c));

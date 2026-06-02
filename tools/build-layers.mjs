@@ -64,6 +64,26 @@ const labels = JSON.parse(readFileSync('tools/labels.json', 'utf8'));
   });
   writeFileSync(`${out}/departements.svg`, svgWrap('departements', `<g>${paths.join('')}</g>`));
   console.log('departements.svg:', paths.length, 'tracés');
+
+  // centroïde du plus grand tracé par département -> src/dept-centroids.json (pour les labels numéros)
+  const best = {};
+  tags.forEach((tag, i) => {
+    const code = labels.pathCode[i]; if (!code) return;
+    const d = (tag.match(/\bd="([^"]+)"/) || [])[1] || '';
+    let A = 0, cx = 0, cy = 0;
+    for (const r of pathToRings(d)) {
+      let a = 0, px = 0, py = 0;
+      for (let k = 0; k < r.length; k++) { const [x1, y1] = r[k], [x2, y2] = r[(k + 1) % r.length]; const cr = x1 * y2 - x2 * y1; a += cr; px += (x1 + x2) * cr; py += (y1 + y2) * cr; }
+      a *= 0.5; if (Math.abs(a) < 1e-9) continue; A += a; cx += px / 6; cy += py / 6;
+    }
+    if (Math.abs(A) < 1e-9) return;
+    const area = Math.abs(A), C = { area, cx: cx / A, cy: cy / A };
+    if (!best[code] || area > best[code].area) best[code] = C;
+  });
+  const centroids = {};
+  for (const c in best) centroids[c] = [+best[c].cx.toFixed(1), +best[c].cy.toFixed(1)];
+  writeFileSync('src/dept-centroids.json', JSON.stringify(centroids));
+  console.log('dept-centroids.json:', Object.keys(centroids).length, 'centroïdes');
 }
 
 // ---- 2. Couche RÉGIONS : contours par ARÊTES des départements ----
