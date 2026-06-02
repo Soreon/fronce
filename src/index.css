@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+:root {
+  --blue-fill: #88aadd;
+  --blue-stroke: #ffffff;
+  --blue-hover: #2f5fb0;
+  --navy: #16335f;
+}
+
+/* ---------- Empilement des couches ---------- */
+.map-stack { position: relative; width: 100%; }
+.layerwrap.base { position: relative; }              /* définit la hauteur */
+.layerwrap.overlay { position: absolute; inset: 0; pointer-events: none; }
+.map-stack svg.layer { display: block; width: 100%; height: auto; }
+.layerwrap.overlay svg.layer { height: 100%; }
+
+/* ---------- Couche départements ---------- */
+.dep {
+  fill: var(--blue-fill);
+  stroke: var(--blue-stroke);
+  stroke-width: 0.4;
+  vector-effect: non-scaling-stroke;
+  transition: fill 0.12s ease;
+}
+/* interactivité selon le mode */
+.mode-departements .dep,
+.mode-regions .dep { pointer-events: auto; cursor: pointer; }
+
+/* survol d'un département (mode départements) */
+.mode-departements .dep.is-hl,
+.dep.is-pin {
+  fill: var(--blue-hover);
+  stroke: var(--navy);
+  stroke-width: 1.1;
+}
+
+/* ---------- Teintes par région (mode régions) ---------- */
+.mode-regions .dep[data-region="Auvergne-Rhône-Alpes"]      { fill: #7ba0d4; }
+.mode-regions .dep[data-region="Bourgogne-Franche-Comté"]   { fill: #9bbbe6; }
+.mode-regions .dep[data-region="Bretagne"]                  { fill: #6b93cc; }
+.mode-regions .dep[data-region="Centre-Val de Loire"]       { fill: #a9c7ec; }
+.mode-regions .dep[data-region="Corse"]                     { fill: #84add9; }
+.mode-regions .dep[data-region="Grand Est"]                 { fill: #8fb3e0; }
+.mode-regions .dep[data-region="Hauts-de-France"]           { fill: #bcd2f0; }
+.mode-regions .dep[data-region="Île-de-France"]             { fill: #7ea7d6; }
+.mode-regions .dep[data-region="Normandie"]                 { fill: #a3c0e8; }
+.mode-regions .dep[data-region="Nouvelle-Aquitaine"]        { fill: #92b6e2; }
+.mode-regions .dep[data-region="Occitanie"]                 { fill: #abc9ee; }
+.mode-regions .dep[data-region="Pays de la Loire"]          { fill: #789fce; }
+.mode-regions .dep[data-region="Provence-Alpes-Côte d'Azur"]{ fill: #b3cbef; }
+
+/* survol d'une région : tous ses départements */
+.mode-regions .dep.reg-hl {
+  fill: var(--blue-hover);
+  stroke: var(--navy);
+  stroke-width: 0.6;
+}
+
+/* ---------- Contours de régions (overlay) ---------- */
+.region-outline {
+  fill: none;
+  stroke: var(--navy);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ---------- Préfectures ---------- */
+.pref {
+  fill: var(--navy);
+  stroke: #ffffff;
+  stroke-width: 0.6;
+  transition: r 0.1s ease, fill 0.1s ease;
+}
+.mode-prefectures .pref { pointer-events: auto; cursor: pointer; }
+.mode-prefectures .pref.is-hl,
+.pref.is-pin { fill: var(--blue-hover); r: 5; }
+/* en mode préfectures, la carte de fond garde sa couleur normale (les points navy ressortent dessus) */
+.mode-prefectures .dep { fill: var(--blue-fill); stroke: #ffffff; }
+/* en mode fleuves, fond encore plus clair pour faire ressortir les cours d'eau */
+.mode-fleuves .dep { fill: #eaf1fb; stroke: #dbe6f5; }
+
+/* ---------- Fleuves ---------- */
+.rivers path { vector-effect: non-scaling-stroke; }
+/* visiblePainted : capte le survol sur les traits ET les plans d'eau remplis */
+.mode-fleuves .rivers path { pointer-events: visiblePainted; }
+.rivers path.is-hl { stroke: var(--blue-hover) !important; stroke-width: 2.2 !important; }

@@ -1,0 +1,28 @@
+{
+  "name": "fronce",
+  "version": "1.0.0",
+  "description": "Carte de France - outil d'apprentissage de la géographie",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:map": "node tools/label.mjs && node tools/build-layers.mjs"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.4",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "polygon-clipping": "^0.15.7",
+    "tailwindcss": "^4.1.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.1"
+  }
+}
