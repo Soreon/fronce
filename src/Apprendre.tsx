@@ -16,7 +16,7 @@ export default function Apprendre() {
   const [auto, setAuto] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { fetch('/layers/departements.svg').then((r) => r.text()).then(setSvg); }, []);
+  useEffect(() => { fetch(`${import.meta.env.BASE_URL}layers/departements.svg`).then((r) => r.text()).then(setSvg); }, []);
 
   const go = (n: number) => setI(Math.max(0, Math.min(ORDER.length - 1, n)));
 

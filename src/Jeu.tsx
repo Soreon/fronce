@@ -82,8 +82,9 @@ export default function Jeu() {
 
   // charge les couches une fois (départements + contours de régions)
   useEffect(() => {
-    fetch('/layers/departements.svg').then((r) => r.text()).then(setSvg);
-    fetch('/layers/regions.svg').then((r) => r.text()).then(setRegSvg);
+    const B = import.meta.env.BASE_URL;
+    fetch(`${B}layers/departements.svg`).then((r) => r.text()).then(setSvg);
+    fetch(`${B}layers/regions.svg`).then((r) => r.text()).then(setRegSvg);
   }, []);
 
   // ---- timer contre-la-montre ----

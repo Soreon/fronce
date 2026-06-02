@@ -14,11 +14,12 @@ const MODES: { id: Mode; label: string }[] = [
 ];
 
 // couche -> fichier ; la base est toujours chargée
+const B = import.meta.env.BASE_URL; // '/' en dev, '/fronce/' sur GitHub Pages
 const LAYER_FILE: Record<string, string> = {
-  departements: '/layers/departements.svg',
-  regions: '/layers/regions.svg',
-  prefectures: '/layers/prefectures.svg',
-  fleuves: '/layers/fleuves.svg',
+  departements: `${B}layers/departements.svg`,
+  regions: `${B}layers/regions.svg`,
+  prefectures: `${B}layers/prefectures.svg`,
+  fleuves: `${B}layers/fleuves.svg`,
 };
 
 // fleuves principaux (info panneau, mode fleuves)
