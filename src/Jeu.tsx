@@ -33,17 +33,53 @@ type Question = {
 // (rég. → la région ; dép. & préf. → le code dép.) pour ne pas réinterroger la même cible
 const targetKey = (q: Question): string => (q.cat === 'reg' ? `reg:${q.region}` : `code:${q.code}`);
 
+// ---- maîtrise adaptative (répétition espacée) ----
+// une « info » = (catégorie, objet, type de question) ; on suit séparément
+// savoir LOCALISER et savoir IDENTIFIER un même objet.
+type Skill = { p: number; seen: number; ts: number }; // p = maîtrise 0..1, ts = dernière fois (epoch ms)
+type Mastery = Record<string, Skill>;
+const MAST_KEY = 'fronce.mastery';
+const DAY = 86_400_000;
+const TAU_DAYS = 12;   // demi-vie de l'oubli : la maîtrise décroît avec le temps
+const FLOOR = 0.12;    // poids minimal de tirage : même un objet su retombe parfois
+// un bon clic (Localiser) crédite plus qu'un bon QCM (Identifier, 1 chance sur 4)
+const ALPHA: Record<QType, number> = { locate: 0.34, identify: 0.18 };
+const BETA = 0.45;     // pénalité sur erreur (la maîtrise est multipliée par BETA)
+
+const masteryKey = (cat: Cat, key: string, qtype: QType) => `${cat}:${key}:${qtype}`;
+// maîtrise « ressentie » après oubli depuis la dernière révision
+function effectiveP(s: Skill | undefined, now: number): number {
+  if (!s) return 0;
+  return s.p * Math.exp(-((now - s.ts) / DAY) / TAU_DAYS);
+}
+// tirage pondéré : plus un objet est mal maîtrisé, plus son poids est élevé
+function weightedPick(cands: string[], cat: Cat, qtype: QType, mastery: Mastery, now: number): string {
+  const weights = cands.map((k) => (1 - effectiveP(mastery[masteryKey(cat, k, qtype)], now)) + FLOOR);
+  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < cands.length; i++) { r -= weights[i]; if (r <= 0) return cands[i]; }
+  return cands[cands.length - 1];
+}
+// nouvelle valeur de maîtrise après une réponse (décroissance d'abord, puis maj)
+function updateSkill(s: Skill | undefined, qtype: QType, correct: boolean, now: number): Skill {
+  const p0 = effectiveP(s, now);
+  const p = correct ? p0 + (1 - p0) * ALPHA[qtype] : p0 * BETA;
+  return { p, seen: (s?.seen ?? 0) + 1, ts: now };
+}
+function loadMastery(): Mastery {
+  try { return JSON.parse(localStorage.getItem(MAST_KEY) || '{}') as Mastery; } catch { return {}; }
+}
+
 // génère une question dont la cible diffère de `avoid` (réponse précédente), avec repli
-function makeQuestion(cats: Cat[], qtype: QType, pool: Pool, avoid?: string): Question {
-  let q = buildQuestion(cats, qtype, pool);
-  for (let i = 0; i < 20 && targetKey(q) === avoid; i++) q = buildQuestion(cats, qtype, pool);
+function makeQuestion(cats: Cat[], qtype: QType, pool: Pool, mastery: Mastery, now: number, avoid?: string): Question {
+  let q = buildQuestion(cats, qtype, pool, mastery, now);
+  for (let i = 0; i < 20 && targetKey(q) === avoid; i++) q = buildQuestion(cats, qtype, pool, mastery, now);
   return q;
 }
 
-function buildQuestion(cats: Cat[], qtype: QType, pool: Pool): Question {
+function buildQuestion(cats: Cat[], qtype: QType, pool: Pool, mastery: Mastery, now: number): Question {
   const cat = rnd(cats);
   if (cat === 'reg') {
-    const region = rnd(pool.reg);
+    const region = weightedPick(pool.reg, cat, qtype, mastery, now);
     if (qtype === 'locate')
       return { cat, qtype, region, prompt: `Trouve la région : ${region}`, answerLabel: region };
     const choices = shuffle([region, ...sample(pool.reg.filter((r) => r !== region), 3)])
@@ -51,7 +87,7 @@ function buildQuestion(cats: Cat[], qtype: QType, pool: Pool): Question {
     return { cat, qtype, region, prompt: 'Quelle est cette région (en surbrillance) ?', answerLabel: region, choices };
   }
   if (cat === 'pref') {
-    const code = rnd(pool.pref);
+    const code = weightedPick(pool.pref, cat, qtype, mastery, now);
     if (qtype === 'locate')
       return { cat, qtype, code, prompt: `Où se trouve ${depts[code].prefecture} ?`, answerLabel: `${depts[code].prefecture} → ${depts[code].nom} (${code})` };
     const choices = shuffle([code, ...sample(pool.pref.filter((c) => c !== code), 3)])
@@ -59,7 +95,7 @@ function buildQuestion(cats: Cat[], qtype: QType, pool: Pool): Question {
     return { cat, qtype, code, prompt: `Quelle est la préfecture de ${depts[code].nom} (${code}) ?`, answerLabel: depts[code].prefecture, choices };
   }
   // dep
-  const code = rnd(pool.dep);
+  const code = weightedPick(pool.dep, cat, qtype, mastery, now);
   if (qtype === 'locate')
     return { cat, qtype, code, prompt: `Trouve le département : ${depts[code].nom} (${code})`, answerLabel: `${depts[code].nom} (${code})` };
   const choices = shuffle([code, ...sample(pool.dep.filter((c) => c !== code), 3)])
@@ -110,6 +146,30 @@ export default function Jeu() {
   }));
   const resetExcl = (cat: Cat) => setExcluded((p) => ({ ...p, [cat]: [] }));
   const exclCount = excluded.dep.length + excluded.reg.length + excluded.pref.length;
+
+  // maîtrise adaptative : state pour l'UI/persistance, ref pour la lecture toujours à jour
+  // (le tirage de la question suivante est planifié avant le re-render)
+  const [mastery, setMastery] = useState<Mastery>(loadMastery);
+  const masteryRef = useRef(mastery);
+  useEffect(() => { try { localStorage.setItem(MAST_KEY, JSON.stringify(mastery)); } catch { /* ignore */ } }, [mastery]);
+  const recordAnswer = (q: Question, correct: boolean) => {
+    const key = masteryKey(q.cat, q.cat === 'reg' ? q.region! : q.code!, q.qtype);
+    const now = Date.now();
+    const next = { ...masteryRef.current, [key]: updateSkill(masteryRef.current[key], q.qtype, correct, now) };
+    masteryRef.current = next;
+    setMastery(next);
+  };
+  const resetMastery = () => { masteryRef.current = {}; setMastery({}); };
+
+  // % de maîtrise moyen (les deux types confondus) par catégorie, objets non vus comptés à 0
+  const stats = useMemo(() => {
+    const now = Date.now();
+    const pct = (keys: string[], cat: Cat) => {
+      const ps = keys.flatMap((k) => (['locate', 'identify'] as QType[]).map((t) => effectiveP(mastery[masteryKey(cat, k, t)], now)));
+      return ps.length ? Math.round((ps.reduce((a, b) => a + b, 0) / ps.length) * 100) : 0;
+    };
+    return { dep: pct(pool.dep, 'dep'), reg: pct(pool.reg, 'reg'), pref: pct(pool.pref, 'pref') };
+  }, [mastery, pool]);
 
   // partie
   const [question, setQuestion] = useState<Question | null>(null);
@@ -171,7 +231,7 @@ export default function Jeu() {
     setMistakes([]);
     setResult(null);
     setTimeLeft(duration);
-    const q = makeQuestion(activeCats, 'locate', pool);
+    const q = makeQuestion(activeCats, 'locate', pool, masteryRef.current, Date.now());
     lastKey.current = targetKey(q);
     setQuestion(q);
     setPhase('playing');
@@ -183,13 +243,14 @@ export default function Jeu() {
     setResult(null);
     qIndex.current += 1;
     const qtype: QType = qIndex.current % 2 === 0 ? 'locate' : 'identify';
-    const q = makeQuestion(activeCats, qtype, pool, lastKey.current);
+    const q = makeQuestion(activeCats, qtype, pool, masteryRef.current, Date.now(), lastKey.current);
     lastKey.current = targetKey(q);
     setQuestion(q);
   }
 
   function registerAnswer(correct: boolean, pickedDep?: string, pickedKey?: string) {
     if (result || !question) return;
+    recordAnswer(question, correct); // met à jour la maîtrise adaptative
     setResult({ correct, pickedDep, pickedKey });
     setScore((s) => ({ correct: s.correct + (correct ? 1 : 0), total: s.total + 1 }));
     if (!correct) setMistakes((m) => [...m, { prompt: question.prompt, answer: question.answerLabel }]);
@@ -276,6 +337,27 @@ export default function Jeu() {
                 </select>
               )}
             </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-slate-700">Ma maîtrise</div>
+              {(stats.dep + stats.reg + stats.pref) > 0 && (
+                <button onClick={resetMastery} className="text-xs text-slate-400 hover:text-red-600 underline">Réinitialiser</button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {(['dep', 'reg', 'pref'] as Cat[]).map((c) => (
+                <div key={c} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-28 shrink-0">{CAT_LABEL[c]}</span>
+                  <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${stats[c]}%` }} />
+                  </div>
+                  <span className="text-xs font-mono text-slate-500 w-9 text-right">{stats[c]}%</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">Le jeu interroge en priorité ce qui est le moins maîtrisé ; la maîtrise s'estompe avec le temps.</p>
           </div>
 
           <button onClick={start} disabled={activeCats.length === 0}
