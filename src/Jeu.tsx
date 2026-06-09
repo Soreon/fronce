@@ -27,7 +27,18 @@ type Question = {
   choices?: Choice[];                  // pour identify
 };
 
-function makeQuestion(cats: Cat[], qtype: QType): Question {
+// identifie l'entité géographique visée, indépendamment de la catégorie/du type
+// (rég. → la région ; dép. & préf. → le code dép.) pour ne pas réinterroger la même cible
+const targetKey = (q: Question): string => (q.cat === 'reg' ? `reg:${q.region}` : `code:${q.code}`);
+
+// génère une question dont la cible diffère de `avoid` (réponse précédente), avec repli
+function makeQuestion(cats: Cat[], qtype: QType, avoid?: string): Question {
+  let q = buildQuestion(cats, qtype);
+  for (let i = 0; i < 20 && targetKey(q) === avoid; i++) q = buildQuestion(cats, qtype);
+  return q;
+}
+
+function buildQuestion(cats: Cat[], qtype: QType): Question {
   const cat = rnd(cats);
   if (cat === 'reg') {
     const region = rnd(REGIONS);
@@ -77,6 +88,7 @@ export default function Jeu() {
   const [mistakes, setMistakes] = useState<Mistake[]>([]);
 
   const qIndex = useRef(0);              // alterne locate/identify
+  const lastKey = useRef<string | undefined>(undefined); // cible de la question précédente
   const advance = useRef<number | undefined>(undefined);
   const playing = useRef(false);
 
@@ -128,7 +140,9 @@ export default function Jeu() {
     setMistakes([]);
     setResult(null);
     setTimeLeft(duration);
-    setQuestion(makeQuestion(cats, 'locate'));
+    const q = makeQuestion(cats, 'locate');
+    lastKey.current = targetKey(q);
+    setQuestion(q);
     setPhase('playing');
   }
 
@@ -138,7 +152,9 @@ export default function Jeu() {
     setResult(null);
     qIndex.current += 1;
     const qtype: QType = qIndex.current % 2 === 0 ? 'locate' : 'identify';
-    setQuestion(makeQuestion(cats, qtype));
+    const q = makeQuestion(cats, qtype, lastKey.current);
+    lastKey.current = targetKey(q);
+    setQuestion(q);
   }
 
   function registerAnswer(correct: boolean, pickedDep?: string, pickedKey?: string) {
