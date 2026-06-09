@@ -3,10 +3,12 @@ import deptsData from './depts.json';
 
 type Dept = { nom: string; region: string; prefecture: string };
 const depts = deptsData as Record<string, Dept>;
-const CODES = Object.keys(depts);
+const CODES = Object.keys(depts).sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
 const REGIONS = [...new Set(CODES.map((c) => depts[c].region))].sort((a, b) => a.localeCompare(b, 'fr'));
 
 type Cat = 'dep' | 'reg' | 'pref';
+// objets jouables par catégorie après exclusions (codes dép. / noms de région)
+type Pool = { dep: string[]; reg: string[]; pref: string[] };
 type QType = 'locate' | 'identify';
 type Format = 'libre' | 'chrono';
 
@@ -32,37 +34,48 @@ type Question = {
 const targetKey = (q: Question): string => (q.cat === 'reg' ? `reg:${q.region}` : `code:${q.code}`);
 
 // génère une question dont la cible diffère de `avoid` (réponse précédente), avec repli
-function makeQuestion(cats: Cat[], qtype: QType, avoid?: string): Question {
-  let q = buildQuestion(cats, qtype);
-  for (let i = 0; i < 20 && targetKey(q) === avoid; i++) q = buildQuestion(cats, qtype);
+function makeQuestion(cats: Cat[], qtype: QType, pool: Pool, avoid?: string): Question {
+  let q = buildQuestion(cats, qtype, pool);
+  for (let i = 0; i < 20 && targetKey(q) === avoid; i++) q = buildQuestion(cats, qtype, pool);
   return q;
 }
 
-function buildQuestion(cats: Cat[], qtype: QType): Question {
+function buildQuestion(cats: Cat[], qtype: QType, pool: Pool): Question {
   const cat = rnd(cats);
   if (cat === 'reg') {
-    const region = rnd(REGIONS);
+    const region = rnd(pool.reg);
     if (qtype === 'locate')
       return { cat, qtype, region, prompt: `Trouve la région : ${region}`, answerLabel: region };
-    const choices = shuffle([region, ...sample(REGIONS.filter((r) => r !== region), 3)])
+    const choices = shuffle([region, ...sample(pool.reg.filter((r) => r !== region), 3)])
       .map((r) => ({ key: r, label: r, correct: r === region }));
     return { cat, qtype, region, prompt: 'Quelle est cette région (en surbrillance) ?', answerLabel: region, choices };
   }
   if (cat === 'pref') {
-    const code = rnd(CODES);
+    const code = rnd(pool.pref);
     if (qtype === 'locate')
       return { cat, qtype, code, prompt: `Où se trouve ${depts[code].prefecture} ?`, answerLabel: `${depts[code].prefecture} → ${depts[code].nom} (${code})` };
-    const choices = shuffle([code, ...sample(CODES.filter((c) => c !== code), 3)])
+    const choices = shuffle([code, ...sample(pool.pref.filter((c) => c !== code), 3)])
       .map((c) => ({ key: c, label: depts[c].prefecture, correct: c === code }));
     return { cat, qtype, code, prompt: `Quelle est la préfecture de ${depts[code].nom} (${code}) ?`, answerLabel: depts[code].prefecture, choices };
   }
   // dep
-  const code = rnd(CODES);
+  const code = rnd(pool.dep);
   if (qtype === 'locate')
     return { cat, qtype, code, prompt: `Trouve le département : ${depts[code].nom} (${code})`, answerLabel: `${depts[code].nom} (${code})` };
-  const choices = shuffle([code, ...sample(CODES.filter((c) => c !== code), 3)])
+  const choices = shuffle([code, ...sample(pool.dep.filter((c) => c !== code), 3)])
     .map((c) => ({ key: c, label: depts[c].nom, correct: c === code }));
   return { cat, qtype, code, prompt: 'Quel est ce département (en surbrillance) ?', answerLabel: `${depts[code].nom} (${code})`, choices };
+}
+
+// ---- exclusions persistées (objets que l'utilisateur connaît déjà) ----
+type Excluded = Record<Cat, string[]>;
+const EXCL_KEY = 'fronce.exclusions';
+const emptyExcl = (): Excluded => ({ dep: [], reg: [], pref: [] });
+function loadExcl(): Excluded {
+  try {
+    const raw = JSON.parse(localStorage.getItem(EXCL_KEY) || '{}');
+    return { dep: raw.dep ?? [], reg: raw.reg ?? [], pref: raw.pref ?? [] };
+  } catch { return emptyExcl(); }
 }
 
 type Result = { correct: boolean; pickedDep?: string; pickedKey?: string } | null;
@@ -75,10 +88,28 @@ export default function Jeu() {
   const lastHoverRegion = useRef<string | null>(null);
 
   // configuration
-  const [phase, setPhase] = useState<'setup' | 'playing' | 'over'>('setup');
+  const [phase, setPhase] = useState<'setup' | 'customize' | 'playing' | 'over'>('setup');
   const [cats, setCats] = useState<Cat[]>(['dep', 'reg', 'pref']);
   const [format, setFormat] = useState<Format>('libre');
   const [duration, setDuration] = useState(60);
+  const [excluded, setExcluded] = useState<Excluded>(loadExcl);
+
+  // pool jouable par catégorie (objets non exclus)
+  const pool = useMemo<Pool>(() => ({
+    dep: CODES.filter((c) => !excluded.dep.includes(c)),
+    reg: REGIONS.filter((r) => !excluded.reg.includes(r)),
+    pref: CODES.filter((c) => !excluded.pref.includes(c)),
+  }), [excluded]);
+  // catégories cochées ET disposant d'au moins un objet jouable
+  const activeCats = useMemo(() => cats.filter((c) => pool[c].length > 0), [cats, pool]);
+
+  // persiste les exclusions
+  useEffect(() => { try { localStorage.setItem(EXCL_KEY, JSON.stringify(excluded)); } catch { /* ignore */ } }, [excluded]);
+  const toggleExcl = (cat: Cat, key: string) => setExcluded((p) => ({
+    ...p, [cat]: p[cat].includes(key) ? p[cat].filter((k) => k !== key) : [...p[cat], key],
+  }));
+  const resetExcl = (cat: Cat) => setExcluded((p) => ({ ...p, [cat]: [] }));
+  const exclCount = excluded.dep.length + excluded.reg.length + excluded.pref.length;
 
   // partie
   const [question, setQuestion] = useState<Question | null>(null);
@@ -133,14 +164,14 @@ export default function Jeu() {
   useEffect(() => () => clearTimeout(advance.current), []);
 
   function start() {
-    if (cats.length === 0) return;
+    if (activeCats.length === 0) return;
     qIndex.current = 0;
     playing.current = true;
     setScore({ correct: 0, total: 0 });
     setMistakes([]);
     setResult(null);
     setTimeLeft(duration);
-    const q = makeQuestion(cats, 'locate');
+    const q = makeQuestion(activeCats, 'locate', pool);
     lastKey.current = targetKey(q);
     setQuestion(q);
     setPhase('playing');
@@ -152,7 +183,7 @@ export default function Jeu() {
     setResult(null);
     qIndex.current += 1;
     const qtype: QType = qIndex.current % 2 === 0 ? 'locate' : 'identify';
-    const q = makeQuestion(cats, qtype, lastKey.current);
+    const q = makeQuestion(activeCats, qtype, pool, lastKey.current);
     lastKey.current = targetKey(q);
     setQuestion(q);
   }
@@ -210,14 +241,19 @@ export default function Jeu() {
             <div className="flex flex-wrap gap-2">
               {(['dep', 'reg', 'pref'] as Cat[]).map((c) => {
                 const on = cats.includes(c);
+                const empty = on && pool[c].length === 0;
                 return (
                   <button key={c} onClick={() => setCats((p) => (on ? p.filter((x) => x !== c) : [...p, c]))}
-                    className={`px-4 py-1.5 rounded-full text-sm font-medium border transition ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
-                    {on ? '✓ ' : ''}{CAT_LABEL[c]}
+                    className={`px-4 py-1.5 rounded-full text-sm font-medium border transition ${empty ? 'bg-amber-50 text-amber-700 border-amber-300' : on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+                    {on ? '✓ ' : ''}{CAT_LABEL[c]}{empty ? ' (tout exclu)' : ''}
                   </button>
                 );
               })}
             </div>
+            <button onClick={() => setPhase('customize')}
+              className="mt-2 text-sm text-blue-600 hover:text-blue-800 underline">
+              Personnaliser les objets{exclCount > 0 ? ` (${exclCount} exclu${exclCount > 1 ? 's' : ''})` : ''}
+            </button>
           </div>
 
           <div>
@@ -242,11 +278,66 @@ export default function Jeu() {
             </div>
           </div>
 
-          <button onClick={start} disabled={cats.length === 0}
+          <button onClick={start} disabled={activeCats.length === 0}
             className="w-full py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-40 transition">
             Commencer
           </button>
+          {cats.length > 0 && activeCats.length === 0 && (
+            <p className="text-sm text-amber-600 -mt-2">Toutes les catégories choisies ont leurs objets exclus.</p>
+          )}
         </div>
+      </div>
+    );
+  }
+
+  if (phase === 'customize') {
+    const sections: { cat: Cat; items: { key: string; label: string }[] }[] = [
+      { cat: 'dep', items: CODES.map((c) => ({ key: c, label: `${c} · ${depts[c].nom}` })) },
+      { cat: 'reg', items: REGIONS.map((r) => ({ key: r, label: r })) },
+      { cat: 'pref', items: CODES.map((c) => ({ key: c, label: `${depts[c].prefecture} (${c})` })) },
+    ];
+    return (
+      <div className="container mx-auto p-4 max-w-3xl">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-xl font-bold text-slate-800">Objets à réviser</h2>
+          <button onClick={() => setPhase('setup')} className="text-sm text-blue-600 hover:text-blue-800 underline">← Réglages</button>
+        </div>
+        <p className="text-sm text-slate-500 mb-5">Décoche les objets que tu connais déjà : ils n'apparaîtront plus dans le jeu. Ton choix est mémorisé.</p>
+
+        <div className="space-y-5">
+          {sections.map(({ cat, items }) => {
+            const offCount = excluded[cat].length;
+            return (
+              <div key={cat} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm font-semibold text-slate-700">
+                    {CAT_LABEL[cat]} <span className="text-slate-400 font-normal">· {items.length - offCount}/{items.length} actifs</span>
+                  </div>
+                  {offCount > 0 && (
+                    <button onClick={() => resetExcl(cat)} className="text-xs text-blue-600 hover:text-blue-800 underline">Tout réactiver</button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {items.map(({ key, label }) => {
+                    const off = excluded[cat].includes(key);
+                    return (
+                      <button key={key} onClick={() => toggleExcl(cat, key)}
+                        title={off ? 'Désactivé — clique pour réactiver' : 'Actif — clique pour exclure'}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium border transition ${off ? 'bg-slate-100 text-slate-400 border-slate-200 line-through' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button onClick={() => setPhase('setup')}
+          className="w-full mt-5 py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">
+          Terminé
+        </button>
       </div>
     );
   }
