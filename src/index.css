@@ -5,6 +5,7 @@
   --blue-stroke: #ffffff;
   --blue-hover: #2f5fb0;
   --navy: #16335f;
+  --river: #155a91;
 }
 
 /* ---------- Empilement des couches ---------- */
@@ -115,3 +116,11 @@
 /* visiblePainted : capte le survol sur les traits ET les plans d'eau remplis */
 .mode-fleuves .rivers path { pointer-events: visiblePainted; }
 .rivers path.is-hl { stroke: var(--blue-hover) !important; stroke-width: 2.2 !important; }
+
+/* Fleuves en surimpression passive sur toutes les vues (visibles, non cliquables) */
+.riveroverlay, .riveroverlay .rivers path { pointer-events: none; }
+/* le réseau hydrographique (chemins fill="none", largeur 0 d'origine) tracé en
+   traits fins et soutenus → fleuves bien visibles */
+.riveroverlay .rivers path[fill="none"] { stroke: var(--river); stroke-width: 0.6; opacity: 0.5; }
+/* les plans d'eau pleins (lacs, larges estuaires) adoucis pour ne pas dominer */
+.riveroverlay .rivers path[fill="#D1E0EF"] { fill: #a9cbed; }

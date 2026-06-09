@@ -120,6 +120,7 @@ type Mistake = { prompt: string; answer: string };
 export default function Jeu() {
   const [svg, setSvg] = useState<string | null>(null);
   const [regSvg, setRegSvg] = useState<string | null>(null);
+  const [riverSvg, setRiverSvg] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const lastHoverRegion = useRef<string | null>(null);
 
@@ -188,6 +189,7 @@ export default function Jeu() {
     const B = import.meta.env.BASE_URL;
     fetch(`${B}layers/departements.svg`).then((r) => r.text()).then(setSvg);
     fetch(`${B}layers/regions.svg`).then((r) => r.text()).then(setRegSvg);
+    fetch(`${B}layers/fleuves.svg`).then((r) => r.text()).then(setRiverSvg);
   }, []);
 
   // ---- timer contre-la-montre ----
@@ -457,6 +459,9 @@ export default function Jeu() {
           <div ref={mapRef} className={`map-stack quiz ${clickable ? 'clickable' : ''}`}
             onClick={onMapClick} onMouseMove={onMapMove} onMouseLeave={clearRegHover}>
             {svg && <div className="layerwrap base" dangerouslySetInnerHTML={{ __html: svg }} />}
+            {svg && riverSvg && (
+              <div className="layerwrap overlay riveroverlay" dangerouslySetInnerHTML={{ __html: riverSvg }} />
+            )}
             {question?.cat === 'reg' && regSvg && (
               <div className="layerwrap overlay" dangerouslySetInnerHTML={{ __html: regSvg }} />
             )}

@@ -95,7 +95,8 @@ export default function CarteFrance() {
       .catch(() => loadingRef.current.delete(id));
   };
 
-  useEffect(() => { ensureLayer('departements'); }, []);
+  // base + fleuves chargés d'emblée : les fleuves restent visibles en surimpression dans tous les modes
+  useEffect(() => { ensureLayer('departements'); ensureLayer('fleuves'); }, []);
   useEffect(() => {
     if (mode === 'regions') ensureLayer('regions');
     if (mode === 'prefectures') ensureLayer('prefectures');
@@ -205,6 +206,10 @@ export default function CarteFrance() {
           >
             {layers.departements && (
               <div className="layerwrap base" dangerouslySetInnerHTML={{ __html: layers.departements }} />
+            )}
+            {/* fleuves en surimpression passive (hors mode fleuves dédié, qui les rend interactifs) */}
+            {mode !== 'fleuves' && layers.fleuves && (
+              <div className="layerwrap overlay riveroverlay" dangerouslySetInnerHTML={{ __html: layers.fleuves }} />
             )}
             {mode === 'regions' && layers.regions && (
               <div className="layerwrap overlay" dangerouslySetInnerHTML={{ __html: layers.regions }} />

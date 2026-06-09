@@ -12,11 +12,16 @@ const ORDER = Object.keys(depts).sort((a, b) => val(a) - val(b));
 
 export default function Apprendre() {
   const [svg, setSvg] = useState<string | null>(null);
+  const [rivers, setRivers] = useState<string | null>(null);
   const [i, setI] = useState(0);
   const [auto, setAuto] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { fetch(`${import.meta.env.BASE_URL}layers/departements.svg`).then((r) => r.text()).then(setSvg); }, []);
+  useEffect(() => {
+    const B = import.meta.env.BASE_URL;
+    fetch(`${B}layers/departements.svg`).then((r) => r.text()).then(setSvg);
+    fetch(`${B}layers/fleuves.svg`).then((r) => r.text()).then(setRivers);
+  }, []);
 
   const go = (n: number) => setI(Math.max(0, Math.min(ORDER.length - 1, n)));
 
@@ -65,6 +70,9 @@ export default function Apprendre() {
         <div className="border border-slate-200 rounded-xl bg-slate-50 p-2">
           <div ref={mapRef} className="map-stack learn" onClick={onClick}>
             {svg && <div className="layerwrap base" dangerouslySetInnerHTML={{ __html: svg }} />}
+            {svg && rivers && (
+              <div className="layerwrap overlay riveroverlay" dangerouslySetInnerHTML={{ __html: rivers }} />
+            )}
             {svg && (
               <div className="layerwrap overlay">
                 <svg className="layer" viewBox="0 0 630 651" xmlns="http://www.w3.org/2000/svg">
